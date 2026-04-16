@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::LazyLock;
 use std::sync::Mutex;
 
-mod hook;
+pub mod hook;
 use hook::Hook;
 
 pub static ORIGINAL_FUNCTIONS: LazyLock<Mutex<BTreeMap<String, usize>>> =
@@ -27,7 +27,7 @@ impl Hooks {
         })
     }
     pub fn enable(&mut self) -> Result<()> {
-        log::info!("Enabling Hooks!");
+        log::info!("Enabling!");
 
         for hook in self.hooks.iter_mut() {
             hook.enable()?;
@@ -36,7 +36,7 @@ impl Hooks {
         Ok(())
     }
     pub fn disable(&self) -> Result<()> {
-        log::info!("Disabling Hooks!");
+        log::info!("Disabling!");
         for hook in self.hooks.iter() {
             hook.disable()?;
         }
@@ -58,10 +58,14 @@ impl Hooks {
     }
 }
 
-pub fn get_function(function: &str) -> Option<*mut c_void> {
+pub fn get_function<T>(function: &str) -> Option<T>
+where
+    T: Copy,
+{
     let map = &(ORIGINAL_FUNCTIONS.lock().unwrap());
     if let Some(original) = map.get(function) {
-        return Some(*original as _);
+        let func: T = unsafe { std::mem::transmute_copy(&(*original as *const c_void)) };
+        return Some(func);
     } else {
         None
     }
