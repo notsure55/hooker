@@ -5,59 +5,74 @@ use std::ffi::c_void;
 use crate::*;
 
 #[derive(Debug, Clone)]
-pub struct Hook {
-    module: &'static str,
-    name: &'static str,
+pub struct Ptr {
+    name: String,
+    target: *mut c_void,
     detour: *mut c_void,
-    target: Option<*mut c_void>,
+}
+
+impl Ptr {
+    pub fn new(name: &str, target: *mut c_void, detour: *mut c_void) -> Self {
+        Self {
+            name: String::from(name),
+            target,
+            detour,
+        }
+    }
+    pub fn enable(&self) -> Result<()> {
+        let trampoline = create_hook(self.target, self.detour)?;
+
+        store_function(self.name.clone(), trampoline, self.target);
+
+        enable_hook(self.target)?;
+
+        log::info!("Enabled {}", self.name);
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Hook {
+    Api(Api),
+    Ptr(Ptr),
 }
 
 impl Hook {
+    pub fn enable(&self) -> Result<()> {
+        match self {
+            Hook::Api(api) => api.enable()?,
+            Hook::Ptr(ptr) => ptr.enable()?,
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Api {
+    module: &'static str,
+    name: &'static str,
+    detour: *mut c_void,
+}
+
+impl Api {
     pub const fn new(module: &'static str, name: &'static str, detour: *mut c_void) -> Self {
         Self {
             module,
             name,
             detour,
-            target: None,
         }
     }
-    pub fn enable(&mut self) -> Result<()> {
+    pub fn enable(&self) -> Result<()> {
         let (trampoline, target) = create_hook_api(self.module, self.name, self.detour)?;
 
-        store_function(self.name.to_string(), trampoline);
+        store_function(self.name.to_string(), trampoline, target);
 
         enable_hook(target)?;
+
         log::info!("Enabled {}", self.name);
 
-        self.target = Some(target);
-
-        Ok(())
-    }
-    pub fn disable(&self) -> Result<()> {
-        if let Some(target) = self.target {
-            if !target.is_null() {
-                disable_hook(target)?;
-                log::info!("Disabled {}", self.name);
-            } else {
-                return Err(anyhow!("Failed to disable for {}", self.name));
-            }
-        } else {
-            log::warn!("Target for {} is {:?}", self.name, self.target);
-        }
-
-        Ok(())
-    }
-    pub fn remove(&self) -> Result<()> {
-        if let Some(target) = self.target {
-            if !target.is_null() {
-                remove_hook(target)?;
-                log::info!("Removed {}", self.name);
-            } else {
-                return Err(anyhow!("Failed to remove for {}", self.name));
-            }
-        } else {
-            log::warn!("Target for {} is {:?}", self.name, self.target);
-        }
         Ok(())
     }
 }
